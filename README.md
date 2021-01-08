@@ -199,7 +199,8 @@ security: "aes-128-gcm" | "chacha20-poly1305" | "auto" | "none",加密方式，�
 ## 8.动态端口-Dynamic port (:3[▓▓▓▓▓▓▓▓▓]
 V2Ray 提供了一个叫动态端口的功能。顾名思义，就是可以动态变化通信端口，该功能的初衷是为了应对电信服务运营商可能会对长时间大流量的单个端口进行限速。<br>
 也许是用的人比较少，到目前为止没有证据可以动态端口对于科学上网是加分项还是减分项。<br>
-个人认为是加分项，而且这个脚本并没有进行一键配置，就拿出来说一下了，本动态端口是基于kcp的，基于tcp的包含在了后面的tls里<br>
+个人认为是加分项，而且这个脚本并没有进行一键配置，就拿出来说一下了，本动态端口是基于kcp的<br>
+~~基于tcp的包含在了后面的tls里，无了，H2不支持动态端口，tcp是自己支持的，想实现的小伙伴可以仿照kcp的动态端口实现~~<br>
 境外VPS服务器端：<br>
 ```Json
 {
@@ -414,7 +415,7 @@ curl  https://get.acme.sh | sh
 
 关于安全性验证可以将`port：自己设定的端口号`在服务器端和客户端设定为443后，利用Qualys SSL Labs's SSL Server Test，在网页中输入自己的域名（可能要带www）进行测试<br>
 
-## 10.HTTP/2 + TLS + 动态端口 ♪（＾∀＾●）
+## 10.HTTP/2 + TLS + ~~动态端口~~ ♪（＾∀＾●）
 HTTP/2相对HTTP/1.1来说网页的载入速度会有较大提升，但现在有没有较大面积普及呢？<br>
 由 HTTP/2 的建议，客户端和服务器必须同时开启 TLS 才可以正常使用这个传输方式。<br>
 这个方案是我目前在使用的方案，不知道之后会不会换成WebSockert + tls + web（咕咕咕）<br>
@@ -423,7 +424,7 @@ HTTP/2相对HTTP/1.1来说网页的载入速度会有较大提升，但现在有
 {
   "inbounds": [
     {
-      "port": 自己设定的端口号,
+      "port": 443,
       "protocol": "vmess",
       "settings": {
         "clients": [
@@ -431,10 +432,8 @@ HTTP/2相对HTTP/1.1来说网页的载入速度会有较大提升，但现在有
             "id": "自主生成合法id",
             "alterId": 64
           }
-        ],
-        "detour": { //绕行配置，即指示客户端使用 dynamicPort 的配置通信
-          "to": "dynamicPort"   
-        }
+        ]
+        
       },
       "streamSettings": {
         "network": "h2", // h2 也可写成 http，效果一样
@@ -451,23 +450,8 @@ HTTP/2相对HTTP/1.1来说网页的载入速度会有较大提升，但现在有
           ]
         }
       }
-    },
-    {
-      "protocol": "vmess",
-      "port": "10000-40000", // 端口范围
-      "tag": "dynamicPort",  // 与上面的 detour to 相同
-      "settings": {
-        "default": {
-          "level": 1,
-          "alterId": 4
-        }
-      },
-      "allocate": {            // 分配模式
-        "strategy": "random",  // 随机开启
-        "concurrency": 2,      // 同时开放两个端口,这个值最大不能超过端口范围的 1/3
-        "refresh": 3           // 每三分钟刷新一次
-      }
     }
+    
   ],
   "outbounds": [
     {
@@ -491,7 +475,7 @@ HTTP/2相对HTTP/1.1来说网页的载入速度会有较大提升，但现在有
       },
       "settings": {
         "auth": "noauth",
-        "udp": false
+        "udp": true
       }
     }
   ],
@@ -502,7 +486,7 @@ HTTP/2相对HTTP/1.1来说网页的载入速度会有较大提升，但现在有
         "vnext": [
           {
             "address": "个人域名(不要www.)",
-            "port": 自己设定的端口号,
+            "port": 443,
             "users": [
               {
                 "id": "自主生成合法id",
