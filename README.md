@@ -96,7 +96,8 @@ Mux 只需要在客户端启用，服务器端自动适配。
 concurrency: number,最大并发连接数。最小值1，最大值1024，缺省默认值8。<br>
 特殊值-1，不加载mux模块。(4.22.0+)<br>
 这个数值表示了一个 TCP 连接上最多承载的 Mux 连接数量。当客户端发出了 8 个 TCP 请求，而concurrency=8时，V2Ray 只会发出一条实际的 TCP 连接，客户端的 8 个请求全部由这个 TCP 连接传输。<br>
-
+## —————————————————————下列一切有关kcp及用UDP传输的方案全部不建议，V2ray的KCP协议会被识别从而封掉本地ip对VPSip的访问————————————————————
+## ---------------------UDP协议相关内容与伪装请看我UDP伪装TCP的实现文章，这里深表歉意-------------------------
 ## 6.Kcp既mkcp的实现-Kcp/mkcp (:3[▓▓] 
 mKCP 使用 UDP 来模拟 TCP 连接，请确定主机上的防火墙配置正确。mKCP 牺牲带宽来降低延迟。传输同样的内容，mKCP 一般比 TCP 消耗更多的流量。<br>
 但其实脚本已经默认做了kcp的搭建，不需要再多余的操作了，下面只是对协议各项参数的介绍和可选项解释<br>
@@ -419,8 +420,7 @@ curl  https://get.acme.sh | sh
 关于安全性验证可以将`port：自己设定的端口号`在服务器端和客户端设定为443后，利用Qualys SSL Labs's SSL Server Test，在网页中输入自己的域名（可能要带www）进行测试<br>
 
 ## 10.HTTP/2 + TLS + ~~动态端口~~ ♪（＾∀＾●）
-HTTP/2相对HTTP/1.1来说网页的载入速度会有较大提升，但现在有没有较大面积普及呢？<br>
-由 HTTP/2 的建议，客户端和服务器必须同时开启 TLS 才可以正常使用这个传输方式。<br>
+HTTP/2相对HTTP/1.1来说网页的载入速度会有较大提升，由 HTTP/2 的建议，客户端和服务器必须同时开启 TLS 才可以正常使用这个传输方式。<br>
 ~~这个方案是我目前在使用的方案，不知道之后会不会换成WebSockert + tls + web（咕咕咕）~~<br>
 ### 注意这里修改值的话服务器端与客户端都要在config.json文件内修改并且在V2RayN的配置中进行相应修改并重启v2ray服务
 境外VPS服务端：<br>
@@ -512,6 +512,373 @@ HTTP/2相对HTTP/1.1来说网页的载入速度会有较大提升，但现在有
 }
 ```
 
-## 11.好的，又写到这里了，嗯……还是没有配图，毕竟git提交一次性解决更好，不然觉得会很麻烦（其实就是懒x），过些时候再写W + T + W吧，还有各种代理穿透之类的QWQ
-## 12.没错，我又回来了，UDP！yyds！TCP真的有点慢……动态端口真的是好是坏还是个问题
-## 13.已经实现KCP与TCP共存与服务器的方案了，过几天再写（咕咕咕）
+## 11.KCP + TCP类 + 动态端口同时实现 =´Å‘=
+第11点是我在经历本地ip被封，无法访问VPS后写下来的，原因是V2ray的mkcp协议被分析了，所以走出去的UDP流量都被识别了，伪装等于无效<br>
+所以我现在不推荐V2ray使用kcp协议，推荐使用TLS + H2或者Websocket + TLS + web的形式，第十一项将会是本项目最后一次提及kcp<br>
+有关实现UDP的TCP伪装传输将在另外的项目中给出，请访问我的其他文章<br>
+VPS服务器端：<br>
+```Json
+{
+
+"log": {
+        "access": "/var/log/v2ray/access.log",
+        "error": "/var/log/v2ray/error.log",
+        "loglevel": "warning"
+},
+
+"inbound": {
+        "port": 23333,       
+        "protocol": "vmess",
+        "settings": {
+            "clients": [
+                {
+                    "id": "xx--xx-xx-xx",  
+                    "level": 1,           
+                    "alterId": 4       
+                }
+            ]
+        },
+        "streamSettings": {
+            "network": "kcp" 
+        }
+},
+
+"inboundDetour": [             
+  {
+            "port": 23333,     
+            "protocol": "vmess",
+            "settings": {
+                "clients": [
+                    {
+                        "id": "xx--xx-xx-xx", 
+                        "level": 1,
+                        "alterId": 4
+                    }
+                ]
+            }
+  },
+  {
+            "port": 12450,       
+            "protocol": "vmess",
+            "settings": {
+                "clients": [
+                    {
+                        "id": "xx--xx-xx-xx",  
+                        "level": 1,
+                        "alterId": 4
+                    }
+                ],
+                "detour": {
+                    "to": "detour-kcp"
+                }
+            },
+            "streamSettings": {
+                "network": "kcp"
+            }
+  },
+  {
+            "port": 12450,       
+            "protocol": "vmess",
+            "settings": {
+                "clients": [
+                    {
+                        "id": "xx--xx-xx-xx", 
+                        "level": 1,
+                        "alterId": 4
+                    }
+                ],
+                "detour": {
+                    "to": "detour-tcp"
+                }
+            }
+  },
+  {
+            "protocol": "vmess",
+            "port": "10000-50100",  
+            "tag": "detour-kcp",
+            "settings": {},
+            "allocate": {
+                "strategy": "random", 
+                "concurrency": 2,     
+                "refresh": 5         
+            },
+            "streamSettings": {
+                "network": "kcp"
+            }
+  },
+  {
+            "protocol": "vmess",
+            "port": "10000-50100",   
+            "tag": "detour-tcp",
+            "settings": {},
+            "allocate": {
+                "strategy": "random",
+                "concurrency": 2,
+                "refresh": 5
+            }
+  }
+],
+
+"outbound": {
+        "protocol": "freedom",
+        "settings": {}
+},
+
+"outboundDetour": [
+        {
+            "protocol": "blackhole",
+            "settings": {},
+            "tag": "blocked"
+        }
+],
+
+"routing": {
+        "strategy": "rules",
+        "settings": {
+            "rules": [
+                {
+                    "type": "field",
+                    "ip": [
+                        "0.0.0.0/8",
+                        "10.0.0.0/8",
+                        "100.64.0.0/10",
+                        "127.0.0.0/8",
+                        "169.254.0.0/16",
+                        "172.16.0.0/12",
+                        "192.0.0.0/24",
+                        "192.0.2.0/24",
+                        "192.168.0.0/16",
+                        "198.18.0.0/15",
+                        "198.51.100.0/24",
+                        "::1/128",
+                        "fc00::/7",
+                        "fe80::/10"
+                    ],
+                    "outboundTag": "blocked"
+                }
+            ]
+        }
+},
+
+"transport": {
+        "tcpSettings": {
+            "connectionReuse": true
+        },
+        "kcpSettings": {
+            "mtu": 1350,
+            "tti": 50,
+            "uplinkCapacity": 12,
+            "downlinkCapacity": 100,
+            "congestion": false,
+            "readBufferSize": 2,
+            "writeBufferSize": 2,
+            "header": {
+                "type": "dtls"
+            }
+        }
+    }
+}
+```
+V2rayN客户端：<br>
+当你想使用kcp的时候，在V2rayN设置成kcp协议的配置；当想使用TCP的时候，在V2rayN设置成TCP协议的配置即可。<br>
+
+## 12.动态端口的TLS + H2实现 (눈_눈)
+目前自己使用的是这套配置，并且在研究UDP的伪装传输中，先将就用着看吧，至少不会被封QAQ<br>
+VPS服务器端：<br>
+```Json
+"inbound": {
+        "port": 第一个自定义端口,
+        "protocol": "vmess",
+        "settings": {
+            "clients": [
+                {
+                    "id": "自己的id",
+                    "level": 1,          
+                    "alterId": 4        
+                }
+            ]
+        },
+        "streamSettings": {
+        "network": "h2",
+        "httpSettings": {
+          "path": "/ray"
+        },
+        "security": "tls",
+        "tlsSettings": {
+          "certificates": [
+            {
+              "certificateFile": "/etc/v2ray/v2ray.crt",
+              "keyFile": "/etc/v2ray/v2ray.key"
+            }
+          ]
+        }
+      }
+},
+
+"inboundDetour": [ 
+  {
+            "port": 第二个自定义端口,
+            "protocol": "vmess",
+            "settings": {
+                "clients": [
+                    {
+                        "id": "自己的id",
+                        "level": 1,
+                        "alterId": 4
+                    }
+                ],
+                "detour": {
+                    "to": "detour-tcp"
+                }
+            }
+  },
+  {
+            "protocol": "vmess",
+            "port": "10000-50100", 
+            "tag": "detour-tcp",
+            "settings": {},
+            "allocate": {
+                "strategy": "random",
+                "concurrency": 2,
+                "refresh": 5
+            },
+			"streamSettings": {
+			"network": "h2",
+			"httpSettings": {
+			"path": "/ray"
+			},
+			"security": "tls",
+			"tlsSettings": {
+			"certificates": [
+            {
+              "certificateFile": "/etc/v2ray/v2ray.crt",
+              "keyFile": "/etc/v2ray/v2ray.key"
+            }
+          ]
+        }
+      }
+  }
+],
+
+"outbound": {
+        "protocol": "freedom",
+        "settings": {}
+},
+
+"outboundDetour": [
+        {
+            "protocol": "blackhole",
+            "settings": {},
+            "tag": "blocked"
+        }
+],
+
+"routing": {
+        "strategy": "rules",
+        "settings": {
+            "rules": [
+                {
+                    "type": "field",
+                    "ip": [
+                        "0.0.0.0/8",
+                        "10.0.0.0/8",
+                        "100.64.0.0/10",
+                        "127.0.0.0/8",
+                        "169.254.0.0/16",
+                        "172.16.0.0/12",
+                        "192.0.0.0/24",
+                        "192.0.2.0/24",
+                        "192.168.0.0/16",
+                        "198.18.0.0/15",
+                        "198.51.100.0/24",
+                        "::1/128",
+                        "fc00::/7",
+                        "fe80::/10"
+                    ],
+                    "outboundTag": "blocked"
+                }
+            ]
+        }
+},
+
+"transport": {
+        "httpSettings": {
+          "path": "/ray"
+        }
+    }
+}
+```
+V2rayN客户端：<br>
+```Json
+"inbounds": [
+    {
+      "tag": "proxy",
+      "port": 10808,
+      "listen": "127.0.0.1",
+      "protocol": "socks",
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      },
+      "settings": {
+        "auth": "noauth",
+        "udp": true
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "自己的域名（不带www）",
+            "port": 第一个自定义端口,
+            "users": [
+              {
+                "id": "自己的id",
+                "alterId": 4,
+                "email": "t@t.tt",
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "h2",
+        "security": "tls",
+        "tlsSettings": {
+          "allowInsecure": false
+        },
+        "httpSettings": {
+          "path": "/ray"
+        }
+      },
+      "mux": {
+        "enabled": false,
+        "concurrency": -1
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom",
+      "settings": {}
+    },
+    {
+      "tag": "block",
+      "protocol": "blackhole",
+      "settings": {
+        "response": {
+          "type": "http"
+        }
+      }
+    }
+  ]
+```
+
+## 13.TCP类协议感觉的确是网速更慢= =，UDP的伪装在写了在写了（咕咕咕），WS + TLS + Web真的不难，但是遥遥无期（也说不定明天就写了）
